@@ -497,6 +497,9 @@
     <div class="sidebar-item" data-template="progress" onclick="selectTemplate('progress')">
       <span class="sidebar-icon">&#128200;</span> Progress
     </div>
+    <div class="sidebar-item" data-template="photos" onclick="selectTemplate('photos')">
+      <span class="sidebar-icon">📷</span> Photos
+    </div>
   </nav>
 
   <!-- MAIN -->
@@ -506,6 +509,7 @@
       <button class="btn btn-ghost" onclick="resetForm()">&#8635; Reset</button>
       <button class="btn btn-outline" onclick="printPreview()">&#128424; Print</button>
       <button class="btn btn-accent" onclick="openExport()">&#8595; Export</button>
+      <button class="btn btn-ghost" id="shareBtn" onclick="shareDocument()" style="display:none">📤 Share</button>
     </div>
 
     <div class="split-pane">
@@ -731,6 +735,11 @@ const TEMPLATES = {
       { section: "Sign-Off" },
       { id: "reviewedBy", label: "Reviewed By (Role)", type: "text" },
     ]
+  },
+
+  photos: {
+    label: "Photo Register",
+    fields: []
   }
 
 };
@@ -739,11 +748,13 @@ const TEMPLATES = {
 let currentTemplate = "safety";
 let formData = {};
 let dynamicRows = {};
+let photoItems = [];
 
 function selectTemplate(t) {
   currentTemplate = t;
   formData = {};
   dynamicRows = {};
+  if (t !== "photos") photoItems = [];
   document.querySelectorAll(".sidebar-item").forEach(el => {
     el.classList.toggle("active", el.dataset.template === t);
   });
@@ -756,6 +767,7 @@ function selectTemplate(t) {
 function renderForm() {
   const tpl = TEMPLATES[currentTemplate];
   const container = document.getElementById("formContainer");
+  if (currentTemplate === "photos") { renderPhotoForm(); return; }
   let html = "";
   tpl.fields.forEach(f => {
     if (f.section) {
@@ -911,6 +923,7 @@ function renderPreview() {
   else if (t === "variation") body += renderVariationBody();
   else if (t === "delay")   body += renderDelayBody();
   else if (t === "progress") body += renderProgressBody();
+  else if (t === "photos")  body += renderPhotosBody();
 
   body += signOff();
   body += `</div>`;
@@ -1184,6 +1197,88 @@ function renderProgressBody() {
   return h;
 }
 
+// ── PHOTOS ──
+function renderPhotoForm() {
+  const container = document.getElementById("formContainer");
+  container.innerHTML = `
+    <div class="form-section">
+      <div class="form-section-title">Upload Photos</div>
+      <div class="form-group full" style="margin-bottom:10px">
+        <label>Select Photos</label>
+        <input type="file" accept="image/*" multiple onchange="addPhotos(this)" style="padding:4px 0;border:none;background:none">
+      </div>
+      <div id="photoList" style="display:flex;flex-direction:column;gap:12px;margin-top:4px"></div>
+    </div>`;
+  renderPhotoList();
+}
+
+function addPhotos(input) {
+  const files = Array.from(input.files);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      photoItems.push({ dataUrl: e.target.result, caption: "" });
+      loaded++;
+      if (loaded === files.length) { renderPhotoList(); renderPreview(); }
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = "";
+}
+
+function renderPhotoList() {
+  const list = document.getElementById("photoList");
+  if (!list) return;
+  if (!photoItems.length) {
+    list.innerHTML = `<p style="font-size:12px;color:var(--subtle)">No photos added yet.</p>`;
+    return;
+  }
+  list.innerHTML = photoItems.map((p, i) => `
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:4px;background:#fafafa">
+      <img src="${p.dataUrl}" style="width:80px;height:60px;object-fit:cover;border-radius:3px;flex-shrink:0">
+      <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+        <textarea placeholder="Caption (optional)" style="font-family:Arial,sans-serif;font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:3px;resize:vertical;min-height:52px;width:100%;box-sizing:border-box" oninput="setPhotoCaption(${i},this.value)">${p.caption}</textarea>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="movePhoto(${i},-1)" ${i===0?"disabled":""}>&#8593;</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="movePhoto(${i},1)" ${i===photoItems.length-1?"disabled":""}>&#8595;</button>
+          <button class="btn btn-danger" style="font-size:11px;padding:3px 10px;margin-left:auto" onclick="removePhoto(${i})">Remove</button>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+function setPhotoCaption(i, val) {
+  if (photoItems[i]) photoItems[i].caption = val;
+  renderPreview();
+}
+
+function movePhoto(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= photoItems.length) return;
+  [photoItems[i], photoItems[j]] = [photoItems[j], photoItems[i]];
+  renderPhotoList();
+  renderPreview();
+}
+
+function removePhoto(i) {
+  photoItems.splice(i, 1);
+  renderPhotoList();
+  renderPreview();
+}
+
+function renderPhotosBody() {
+  if (!photoItems.length) return `<p class="doc-body-text" style="color:var(--border)">No photos uploaded.</p>`;
+  let h = `<div class="doc-section-title">Photo Register</div>`;
+  photoItems.forEach((p, i) => {
+    h += `<div style="margin-bottom:20px;page-break-inside:avoid">
+      <img src="${p.dataUrl}" style="width:100%;max-height:320px;object-fit:contain;border:1px solid var(--border);border-radius:3px">
+      <p class="doc-body-text" style="margin-top:6px"><strong>Photo ${i+1}</strong>${p.caption ? " — " + p.caption : ""}</p>
+    </div>`;
+  });
+  return h;
+}
+ 
 // ── EXPORT ────────────────────────────────────────────────────────────────
 function openExport()  { document.getElementById("exportModal").classList.add("open"); }
 function closeExport() { document.getElementById("exportModal").classList.remove("open"); }
@@ -1260,6 +1355,25 @@ ${getPrintStyles()}
   showToast("HTML file downloaded.");
 }
 
+async function shareDocument() {
+  const title = TEMPLATES[currentTemplate].label;
+  const preview = document.getElementById("docPreview").outerHTML;
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>${title} — Simmons Civil Contracting</title>
+<style>body{font-family:Arial,sans-serif;margin:0;padding:40px;background:#F0F2F5;}
+.doc-preview{background:#fff;max-width:800px;margin:0 auto;padding:0;box-shadow:0 2px 16px rgba(0,0,0,0.1);}
+${getPrintStyles()}</style></head><body>${preview}</body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const file = new File([blob], `${title.replace(/ /g,"_")}_SCC.html`, { type: "text/html" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: `${title} — SCC` }); }
+    catch (err) { if (err.name !== "AbortError") showToast("Share failed: " + err.message); }
+  } else if (navigator.share) {
+    try { await navigator.share({ title: `${title} — SCC`, text: `${title} from Simmons Civil Contracting` }); }
+    catch (err) { if (err.name !== "AbortError") showToast("Share failed."); }
+  }
+}
+
 function showToast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -1269,6 +1383,9 @@ function showToast(msg) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 selectTemplate("safety");
+if (navigator.share) {
+  document.getElementById("shareBtn").style.display = "";
+}
 </script>
 </body>
 </html>
